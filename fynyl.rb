@@ -20,10 +20,11 @@ end
 
 class FynylState
 	@@NUMBER = /_?\d+/
+	@@STRING = /"(?:[^"]|"")*"/
 	@@META = ["@", "#", "&", ".&"]
 	def FynylState.tokenize(code)
 		line, col = 1, 1
-		code.scan(/#@@NUMBER|\s+|[.:]*\S/).map.with_index { |raw, start|
+		code.scan(/#@@NUMBER|#@@STRING|\s+|[.:]*\S/).map.with_index { |raw, start|
 			type = case raw
 				when "{"
 					:block_open
@@ -31,6 +32,8 @@ class FynylState
 					:block_close
 				when /^#@@NUMBER$/
 					:number
+				when /^#@@STRING$/
+					:string
 				when /^\s+$/
 					:whitespace
 				when *@@META
@@ -126,6 +129,8 @@ class FynylState
 					@stack = @stack_stack.pop + [@stack]
 				when :number
 					@stack << cur.raw.tr('_', '-').to_i
+				when :string
+					@stack << cur.raw[1..-2].gsub('""', '"')
 				when :meta
 					meta_symbol = cur.raw
 					advance
@@ -153,6 +158,18 @@ class FynylState
 						when "="
 							a, b = @stack.pop(2)
 							@stack.push a == b
+						when "<"
+							a, b = @stack.pop(2)
+							@stack.push a < b
+						when ":<"
+							a, b = @stack.pop(2)
+							@stack.push a <= b
+						when ">"
+							a, b = @stack.pop(2)
+							@stack.push a > b
+						when ":>"
+							a, b = @stack.pop(2)
+							@stack.push a >= b
 						
 						when "["
 							@stack.push @stack.pop.pred
@@ -181,9 +198,14 @@ class FynylState
 						
 						when ".c"
 							@stack.push CMath::cos @stack.pop
+						when ":c"
+							@stack.push CMath::acos @stack.pop
 						
 						when "d"
 							@stack.push @stack.last
+						
+						when "F"
+							@stack.push FynylState.new(@stack.pop)
 							
 						when "f"
 							a, f = @stack.pop(2)
@@ -205,11 +227,22 @@ class FynylState
 						when "i"
 							@stack.push @stack.pop * 1i
 						
+						when "L"
+							f = @stack.pop
+							loop {
+								call_subinst f
+							}
+						
 						when "m"
 							a, f = @stack.pop(2)
 							@stack << a.map { |e|
 								call_inst(f, e).last
 							}
+						
+						when "p"
+							puts FynylState.format(@stack.pop)
+						when "P"
+							print FynylState.format(@stack.pop)
 						
 						when "r"
 							a = @stack.pop
@@ -233,6 +266,11 @@ class FynylState
 							a, b = @stack.pop(2)
 							@stack << (a..b).to_a
 						
+						when ".r"
+							@stack << Readline.readline("", true)
+						when "..r"
+							@stack << Readline.readline(@stack.pop, true)
+						
 						when "t"
 							as, bs, f = @stack.pop(3)
 							@stack << as.map { |a|
@@ -241,6 +279,9 @@ class FynylState
 								}
 							}
 						
+						when ".:S"
+							print_stack
+							
 						when "T"
 							@stack.push @stack.pop.transpose
 						
@@ -269,6 +310,21 @@ class FynylState
 								Array === a ? a.map { |e| rec[e] } : call_inst(f, a).last
 							}
 							@stack << rec[@stack.pop]
+						
+						when "w"
+							f = @stack.pop
+							while FynylState.truthy? @stack.last
+								call_subinst f
+							end
+						when "W"
+							c, f = @stack.pop(2)
+							loop {
+								call_subinst c
+								unless FynylState.truthy? @stack.last
+									break
+								end
+								call_subinst f
+							}
 						
 						when "y"
 							@stack.push @stack[-2]
@@ -303,6 +359,12 @@ class FynylState
 		tokens.map(&:raw).join
 	end
 	
+	def print_stack
+		@stack.each { |e|
+			puts FynylState.format e
+		}
+	end
+	
 	def FynylState.format(entity)
 		case entity
 			when Array
@@ -329,8 +391,9 @@ class FynylState
 	end
 end
 
-inst = FynylState.new ARGV[0]
-inst.run
-inst.stack.each { |e|
-	puts FynylState.format e
-}
+if $0 == __FILE__
+	program = File.read(ARGV[0]) rescue ARGV[0]
+	inst = FynylState.new program
+	inst.run
+	inst.print_stack
+end
