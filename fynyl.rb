@@ -86,6 +86,9 @@ class FynylState
 	end
 	
 	def call_subinst(inst)
+		if String === inst
+			inst = FynylState.new(inst)
+		end
 		inst.stack = @stack
 		inst.variables = @variables
 		inst.functions = @functions
@@ -190,12 +193,18 @@ class FynylState
 								@stack << a * b
 							end
 						
+						when ","
+							@stack << @stack.pop(2)
+						
 						when "!"
 							call_subinst @stack.pop
 						
 						when "b"
 							@stack.push FynylState.truthy? @stack.pop
 						
+						when "C"
+							@stack.clear
+							
 						when ".c"
 							@stack.push CMath::cos @stack.pop
 						when ":c"
@@ -203,6 +212,11 @@ class FynylState
 						
 						when "d"
 							@stack.push @stack.last
+						
+						when "E"
+							exit 0
+						when ".E"
+							exit! @stack.pop
 						
 						when "F"
 							@stack.push FynylState.new(@stack.pop)
@@ -232,6 +246,9 @@ class FynylState
 							loop {
 								call_subinst f
 							}
+						when ".l"
+							path = @stack.pop
+							call_subinst File.read(path)
 						
 						when "m"
 							a, f = @stack.pop(2)
@@ -270,6 +287,12 @@ class FynylState
 							@stack << Readline.readline("", true)
 						when "..r"
 							@stack << Readline.readline(@stack.pop, true)
+						
+						when "s"
+							@stack << @stack.pop.size
+						
+						when "S"
+							call_subinst "@+f"
 						
 						when "t"
 							as, bs, f = @stack.pop(3)
