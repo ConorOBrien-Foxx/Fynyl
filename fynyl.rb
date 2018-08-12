@@ -273,7 +273,7 @@ class FynylState
 
                 a = [seed, *a] unless seed.nil?
 
-                @stack << a.inject { |p, c| call_inst(f, p, c).last }
+                @stack << a.inject { |a, c| call_inst(f, a, c).last }
 
             when "i"
                 @stack.push @stack.pop * 1i
@@ -325,6 +325,12 @@ class FynylState
                 @stack << Readline.readline(@stack.pop, true)
             when ":r"
                 @stack << File.read(@stack.pop)
+            when ".R"
+                @stack << STDIN.gets.chomp
+            when "..R"
+                @stack << STDIN.gets
+            when ":R"
+                call_subinst STDIN.gets
 
             when "s"
                 @stack << @stack.pop.size
@@ -388,6 +394,9 @@ class FynylState
                     end
                     call_subinst f
                 }
+
+            when ".w"
+                File.write(@stack.pop, @stack.pop)
 
             when "x"
                 n, b = @stack.pop(2)
