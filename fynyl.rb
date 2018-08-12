@@ -129,7 +129,7 @@ class FynylState
 					@stack_stack << @stack.clone
 					@stack.clear
 				when :array_end
-					@stack = @stack_stack.pop + [@stack]
+					@stack[0..-1] = @stack_stack.pop + [@stack]
 				when :number
 					@stack << cur.raw.tr('_', '-').to_i
 				when :string
@@ -415,6 +415,8 @@ class FynylState
 end
 
 if $0 == __FILE__
+	require 'minimist'
+	
 	program = File.read(ARGV[0]) rescue ARGV[0]
 	inst = FynylState.new program
 	inst.run
