@@ -2,6 +2,15 @@
 require 'cmath'
 require 'readline'
 
+def to_base(base, n)
+	arr = []
+	until n.zero?
+		n, m = n.divmod(base)
+		arr << m
+	end
+	arr
+end
+
 class FynylToken
 	def initialize(raw=nil, type=nil, start=nil, line=nil, col=nil)
 		@raw = raw
@@ -21,15 +30,19 @@ end
 class FynylState
 	@@NUMBER = /_?\d+/
 	@@STRING = /"(?:[^"]|"")*"/
-	@@META = ["@", "#", "&", ".&"]
+	@@META = ["@", "#", "&", ".&", "q", "Q"]
 	def FynylState.tokenize(code)
 		line, col = 1, 1
-		code.scan(/#@@NUMBER|#@@STRING|\s+|[.:]*\S/).map.with_index { |raw, start|
+		code.scan(/#@@NUMBER|#@@STRING|\s+|[`'].|[.:]*\S/).map.with_index { |raw, start|
 			type = case raw
 				when "{"
 					:block_open
 				when "}"
 					:block_close
+				when /^`/
+					:ord
+				when /^'/
+					:char
 				when /^#@@NUMBER$/
 					:number
 				when /^#@@STRING$/
@@ -61,7 +74,7 @@ class FynylState
 	def initialize(code)
 		@stack = []
 		@stack_stack = []
-		@variables = {"A" => ("A".."Z").to_a.join }
+		@variables = { "A" => ("A".."Z").to_a.join, "h" => "", "H" => " " }
 		@functions = {}
 		if Array === code
 			@tokens = code
@@ -129,7 +142,14 @@ class FynylState
 					@stack_stack << @stack.clone
 					@stack.clear
 				when :array_end
-					@stack[0..-1] = @stack_stack.pop + [@stack]
+					temp = @stack_stack.pop
+					temp.push @stack.dup
+					@stack.clear
+					@stack.concat temp
+				when :ord
+					@stack << cur.raw[1].ord
+				when :char
+					@stack << cur.raw[1]
 				when :number
 					@stack << cur.raw.tr('_', '-').to_i
 				when :string
@@ -149,30 +169,59 @@ class FynylState
 							advance
 							a << cur
 							@stack << FynylState.new(a)
+						when "q"
+							call_subinst "@#{cur.raw}v"
+						when "Q"
+							call_subinst "@#{cur.raw}V"
 						else
 							STDERR.puts "unhandled meta #{meta_symbol.inspect}"
 					end
 				when :operator
 					case cur.raw
-						when /[-+\/%]/
+						when /^[-+\/%]$/
 							a, b = @stack.pop(2)
 							@stack.push a.send cur.raw, b
 						
+						when ":%"
+							fmt, n = @stack.pop(2)
+							args = @stack.pop(n)
+							@stack << fmt.gsub(/%(\d+)/) { args[$1.to_i] }
+						
+						when "^"
+							a, b = @stack.pop(2)
+							@stack << a ** b
+							
 						when "="
 							a, b = @stack.pop(2)
 							@stack.push a == b
 						when "<"
 							a, b = @stack.pop(2)
 							@stack.push a < b
+						when ".<"
+							@stack.push @stack.pop(2).min
 						when ":<"
 							a, b = @stack.pop(2)
 							@stack.push a <= b
 						when ">"
 							a, b = @stack.pop(2)
 							@stack.push a > b
+						when ".>"
+							@stack.push @stack.pop(2).max
 						when ":>"
 							a, b = @stack.pop(2)
 							@stack.push a >= b
+						
+						when "?"
+							e = @stack.pop
+							stack << case e
+								when Array, String
+									e.to_a.sample
+								else
+									rand e
+							end
+						
+						when ".?"
+							@stack.push @stack.pop.shuffle
 						
 						when "["
 							@stack.push @stack.pop.pred
@@ -196,6 +245,11 @@ class FynylState
 						when ","
 							@stack << @stack.pop(2)
 						
+						when "$"
+							@stack.pop
+						when ".$"
+							@stack.pop @stack.pop
+						
 						when "!"
 							call_subinst @stack.pop
 						
@@ -217,6 +271,9 @@ class FynylState
 							exit 0
 						when ".E"
 							exit! @stack.pop
+						
+						when "e"
+							call_subinst FynylState.new(@stack.pop)
 						
 						when "F"
 							@stack.push FynylState.new(@stack.pop)
@@ -241,6 +298,10 @@ class FynylState
 						when "i"
 							@stack.push @stack.pop * 1i
 						
+						when "j"
+							a, j = @stack.pop(2)
+							@stack << a.join(j)
+						
 						when "L"
 							f = @stack.pop
 							loop {
@@ -253,6 +314,11 @@ class FynylState
 						when "m"
 							a, f = @stack.pop(2)
 							@stack << a.map { |e|
+								call_inst(f, e).last
+							}
+						when ".m"
+							a, f = @stack.pop(2)
+							a.each { |e|
 								call_inst(f, e).last
 							}
 						
@@ -296,6 +362,8 @@ class FynylState
 						
 						when "s"
 							@stack << @stack.pop.size
+						when ";"
+							@stack << @stack.pop.to_s
 						
 						when "S"
 							call_subinst "@+f"
@@ -354,6 +422,9 @@ class FynylState
 								end
 								call_subinst f
 							}
+							
+						when "x"
+							
 						
 						when "y"
 							@stack.push @stack[-2]
@@ -386,6 +457,10 @@ class FynylState
 	
 	def body
 		tokens.map(&:raw).join
+	end
+	
+	def to_s
+		FynylState.format self
 	end
 	
 	def print_stack
