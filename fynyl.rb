@@ -3,12 +3,30 @@ require 'cmath'
 require 'readline'
 
 def to_base(base, n)
+	return [0] if n.zero?
 	arr = []
 	until n.zero?
 		n, m = n.divmod(base)
-		arr << m
+		arr.unshift m
 	end
 	arr
+end
+
+def from_base(base, arr)
+	arr.map.with_index { |e, i| e * base**(arr.size - i - 1) }.sum
+end
+
+def chunk_by(arr, n)
+	arr = arr.clone
+	res = []
+	until arr.empty?
+		res << arr.shift(n)
+	end
+	res
+end
+
+def chunk_into(arr, n)
+	chunk_by(arr, (arr.size / n.to_f).ceil)
 end
 
 class FynylToken
@@ -178,9 +196,41 @@ class FynylState
 					end
 				when :operator
 					case cur.raw
-						when /^[-+\/%]$/
+						when /^[-+%]$/
 							a, b = @stack.pop(2)
 							@stack.push a.send cur.raw, b
+						
+						when "_"
+							a = @stack.pop
+							@stack << if Array === a || String === a
+								a.reverse
+								
+							elsif Numeric === a
+								-a
+							
+							elsif a.respond_to? :reverse
+								a.reverse
+							
+							elsif a.respond_to? :to_a
+								a.to_a.reverse
+							
+							else
+								raise 'idk'
+							end
+						
+						when "|"
+							@stack.push @stack.pop.abs
+						
+						when "/"
+							a, b = @stack.pop(2)
+							
+							@stack << if String === a && String === b
+								a.split b
+							elsif Numeric === a && Numeric === b
+								a / b
+							elsif Numeric === b
+								chunk_into(a, b)
+							end
 						
 						when ":%"
 							fmt, n = @stack.pop(2)
@@ -258,6 +308,9 @@ class FynylState
 						
 						when "C"
 							@stack.clear
+						
+						when "c"
+							@stack.push @stack.pop.chr
 							
 						when ".c"
 							@stack.push CMath::cos @stack.pop
@@ -266,7 +319,16 @@ class FynylState
 						
 						when "d"
 							@stack.push @stack.last
-						
+						when "D"
+							n = @stack.pop
+							@stack << case n
+								when String
+									n.chars
+								when Array
+									n.dup
+								when Numeric
+									n.digits.reverse
+							end
 						when "E"
 							exit 0
 						when ".E"
@@ -333,21 +395,7 @@ class FynylState
 						
 						when "r"
 							a = @stack.pop
-							@stack << if Array === a || String === a
-								a.reverse
-								
-							elsif Numeric === a
-								(1..a).to_a
-							
-							elsif a.respond_to? :reverse
-								a.reverse
-							
-							elsif a.respond_to? :to_a
-								a.to_a.reverse
-							
-							else
-								:no
-							end
+							@stack << (1..a).to_a
 						
 						when "R"
 							a, b = @stack.pop(2)
@@ -424,7 +472,12 @@ class FynylState
 							}
 							
 						when "x"
+							n, b = @stack.pop(2)
+							@stack << to_base(b, n)
 							
+						when "X"
+							n, b = @stack.pop(2)
+							@stack << from_base(b, n)
 						
 						when "y"
 							@stack.push @stack[-2]
