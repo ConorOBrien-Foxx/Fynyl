@@ -256,6 +256,10 @@ class FynylState
 								call_inst(f, e).last
 							}
 						
+						when "o"
+							puts @stack.pop
+						when "O"
+							print @stack.pop
 						when "p"
 							puts FynylState.format(@stack.pop)
 						when "P"
@@ -287,6 +291,8 @@ class FynylState
 							@stack << Readline.readline("", true)
 						when "..r"
 							@stack << Readline.readline(@stack.pop, true)
+						when ":r"
+							@stack << File.read(@stack.pop)
 						
 						when "s"
 							@stack << @stack.pop.size
@@ -402,6 +408,8 @@ class FynylState
 				else
 					entity.to_s
 				end
+			when String
+				'"' + entity.gsub('"', '""') + '"'
 			when Numeric
 				entity.to_s.tr('-', '_')
 			else
@@ -415,7 +423,7 @@ class FynylState
 end
 
 if $0 == __FILE__
-	require 'minimist'
+	# require 'minimist'
 	
 	program = File.read(ARGV[0]) rescue ARGV[0]
 	inst = FynylState.new program
