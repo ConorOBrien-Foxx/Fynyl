@@ -555,7 +555,42 @@ class FynylState
 end
 
 if $0 == __FILE__
-    program = File.read(ARGV[0]) rescue ARGV[0]
+    require 'optparse'
+    file_name = File.basename $0
+
+    options = {}
+    parser = OptionParser.new { |opts|
+        opts.program_name = file_name
+        opts.banner = "Usage: #{file_name} [options]"
+
+        opts.separator ""
+        opts.separator "[options]"
+
+        opts.on("-r", "--repl", "Engage REPL mode") { |v|
+            options[:repl] = v
+        }
+        opts.on("-e", "--execute CODE", "Executes `CODE`") { |v|
+            options[:code] = v
+        }
+        opts.on_tail("-h", "--help", "Show this help message") { |v|
+            puts opts
+            exit
+        }
+    }
+    parser.parse!
+    if ARGV.empty? && options.empty?
+        puts parser
+        exit
+    end
+
+    if options[:repl]
+        program = File.read("examples/repl.fyn")
+    elsif options[:code]
+        program = options[:code]
+    else
+        program = File.read(ARGV[0])
+    end
+
     inst = FynylState.new program
     inst.run
     inst.print_stack
