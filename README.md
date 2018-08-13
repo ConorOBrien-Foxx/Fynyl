@@ -40,8 +40,8 @@ $               operator    discards the top of the stack
 :$              operator    [number N] pops until there are no more than N elements on the stack       
 %               operator    [number a, number b] pushes a mod b
 :%              operator    [string s, number n] pops the top N elements, and formats s according to those elements
-&               meta        assigns the top of the stack to the variable indicated by the next token
-.&              meta        assigns the top of the stack to the function idnicated by the next token
+&               other       assigns the top of the stack to the variable indicated by the next token
+.&              other       assigns the top of the stack to the function indicated by the next token
 (               other       begins an array, starting a new sub stack
 )               other       closes an array, pushing the contents of the sub stack onto the previous stack
 *               operator    [number a, number b] pushes a * b
@@ -91,7 +91,6 @@ L               operator    [block b] loops b, i.e. continuously executing it in
 M               operator    [array a] merges the stack with the array, pushing each element in a to the stack
 O               operator    [any a] outputs a to STDOUT without a trailing newline
 P               operator    [any a] outputs the representation of a without a trailing newline
-Q               meta        Qx is equivalent to {x}V for a token x
 R               operator    [number a, number b] pushes the inclusive range between a and b
 .R              operator    pushes a line of STDIN without a trailing newline
 :R              operator    evaluates a line of STDIN in the current scope
@@ -100,7 +99,8 @@ R               operator    [number a, number b] pushes the inclusive range betw
 S               operator    [array a] pushes the sum of a
 .:S             operator    debugs the stack
 T               operator    [array a] pushes a transposed
-V               operator    [array a, block b] vectorizes b on each atom in a
+V               meta        [array a, block b] vectorizes b on each atom in a
+                            e.g.: ((1 2 3) (4 5 6)) V{2+} is ((3 4 5) (6 7 8))
 W               operator    [block c, block b] executes b in the current scope until c yields a falsey value given the stack
 X               operator    [array a, base b] converts a from base b to base 10
 [               operator    [number a] pushes a - 1
@@ -124,11 +124,17 @@ i               operator    [number a] pushes a * i (the imaginary unit)
 j               operator    [array a, string s] pushes a joined by s
                             [array a] pushes a joined by nothing
 .l              operator    [string s] loads file s into the current scope
-m               operator    [array a, block b] pushes a mapped over b
-.m              operator    [array a, block b] same as `m`, but does not push the resulting array
+m               meta        [array a, block b] pushes a mapped over b
+                            e.g.: _3 3R m| is (3 2 1 0 1 2 3)
+.m              meta        [array a, block b] same as `m`, but does not push the resulting array
+                            e.g.: 5r .m{"my number is "Oo} outputs:
+                            my number is 1
+                            my number is 2
+                            my number is 3
+                            my number is 4
+                            my number is 5
 o               operator    [any a] outputs a to STDOUT with a trailing newline
 p               operator    [any a] outputs the representation of a with a trailing newline
-q               meta        qx is equivalent to {x}v for a token x
 r               operator    [number n] pushes a range from 1 to n
 .r              operator    reads a line of input from the keyboard
 :r              operator    [string s] pushes the contents of a file specified by s
@@ -138,14 +144,14 @@ s               operator    [string s] pushes the number of characters in s
                             [number n] pushes the number of digits in n
 t               operator    [array x, array y, block b] tabulates b over x and y
                             e.g.: (1 2 3) (4 5 6) {*} t yields ((4 5 6) (8 10 12) (12 15 18))
-v               operator    [array x, array y, block b] vectorizes b over x and y
-                            e.g.: (1 2 3) 3 {+} v yields (4 5 6)
+v               meta        [array x, array y, block b] vectorizes b over x and y
+                            e.g.: (1 2 3) 3 v+ yields (4 5 6)
 w               operator    [block b] while the top value on the stack is truthy, execute b in the current scope
 .w              operator    [string c, string p] writes c to file p
 x               operator    [number n, number b] converts n to base b
 y               operator    pushes the second-to-top member on the stack
-z               operator    [array x, array y, block b] zips b across x and y
-                            e.g.: ("a" "b" "c") (1 2 3) {;+} z yields ("a1" "b2" "c3")
+z               meta        [array x, array y, block b] zips b across x and y
+                            e.g.: ("a" "b" "c") (1 2 3) z{;+} yields ("a1" "b2" "c3")
 |               operator    [number n] pushes the absolute value of n
 ~               operator    swaps the top two elements on the stack
 

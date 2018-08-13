@@ -47,10 +47,18 @@ class FynylToken
     end
 end
 
+def iofn(arity=nil, &bl)
+    arity ||= bl.arity
+    lambda { |inst|
+        args = inst.stack.pop(arity)
+        inst.stack << bl[*args]
+    }
+end
+
 class FynylState
     @@NUMBER = /_?\d+/
     @@STRING = /"(?:[^"]|"")*"/
-    @@META = ["q", "Q", "z"]
+    @@META = ["z", "m", ".m", "v", "V", "q"]
     @@UPDATE_TYPES = {
         "&" => :set_var,
         ".&" => :set_func,
@@ -221,6 +229,56 @@ class FynylState
         end
     end
 
+    def call_meta(meta_symbol, function)
+        case meta_symbol
+            when "z"
+                iofn { |a, b|
+                    a.zip(b).map { |e| call_inst(function, *e).last }
+                }
+
+            when "m"
+                iofn { |a|
+                    a.map { |e|
+                        call_inst(function, e).last
+                    }
+                }
+
+            when ".m"
+                iofn { |a|
+                    a.each { |e|
+                        call_inst(function, e).last
+                    }
+                }
+
+            when "v"
+                rec = lambda { |l, r|
+                    case [Array === l, Array === r]
+                        when [true, true]
+                            l.zip(r).map { |e, k| rec[e, k] }
+
+                        when [true, false]
+                            l.map { |e| rec[e, r] }
+
+                        when [false, true]
+                            r.map { |e| rec[l, e] }
+
+                        when [false, false]
+                            call_inst(function, l, r).last
+                    end
+                }
+                iofn { |l, r| rec[l, r] }
+
+            when "V"
+                rec = lambda { |a|
+                    Array === a ? a.map { |e| rec[e] } : call_inst(function, a).last
+                }
+                iofn { |a| rec[a] }
+
+            else
+                STDERR.puts "unhandled meta #{meta_symbol.inspect}"
+        end
+    end
+
     def step
         if FynylState === cur
             @stack << cur
@@ -256,31 +314,11 @@ class FynylState
                 when :set_func
                     @functions[cur.raw] = @stack.pop
                 when :meta
-                    meta_symbols = []
-                    while FynylToken === cur && cur.type == :meta
-                        meta_symbols << cur.raw
-                        advance
-                    end
+                    meta_symbol = cur.raw
+                    advance
+                    function = call_meta meta_symbol, get_func(cur)
+                    function[self]
 
-                    function = get_func cur
-                    meta_symbols.each_with_index.reverse_each { |meta_symbol, i|
-                        if i > 0
-                            raise "no support for nested meta symbols presently"
-                        end
-                        case meta_symbol
-                            when "q"
-                                call_subinst "{#{cur.raw}}v"
-                            when "Q"
-                                call_subinst "{#{cur.raw}}V"
-                            when "z"
-                                f = function
-                                function = lambda { |a, b|
-                                    a.zip(b).map { |e| call_inst(f, *e).last }
-                                }
-                            else
-                                STDERR.puts "unhandled meta #{meta_symbol.inspect}"
-                        end
-                    }
                 when :operator
                     call_op cur.raw
                 else
@@ -528,16 +566,6 @@ class FynylState
                 path = @stack.pop
                 call_subinst File.read(path)
 
-            when "m"
-                a, f = @stack.pop(2)
-                @stack << a.map { |e|
-                    call_inst(f, e).last
-                }
-            when ".m"
-                a, f = @stack.pop(2)
-                a.each { |e|
-                    call_inst(f, e).last
-                }
             when "M"
                 @stack.concat @stack.pop
 
@@ -606,32 +634,6 @@ class FynylState
 
             when "T"
                 @stack.push @stack.pop.transpose
-
-            when "v"
-                f = @stack.pop
-                rec = lambda { |l, r|
-                    case [Array === l, Array === r]
-                        when [true, true]
-                            l.zip(r).map { |e, k| rec[e, k] }
-
-                        when [true, false]
-                            l.map { |e| rec[e, r] }
-
-                        when [false, true]
-                            r.map { |e| rec[l, e] }
-
-                        when [false, false]
-                            call_inst(f, l, r).last
-                    end
-                }
-                @stack << rec[*@stack.pop(2)]
-
-            when "V"
-                f = @stack.pop
-                rec = lambda { |a|
-                    Array === a ? a.map { |e| rec[e] } : call_inst(f, a).last
-                }
-                @stack << rec[@stack.pop]
 
             when "w"
                 f = @stack.pop
