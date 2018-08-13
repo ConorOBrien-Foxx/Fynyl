@@ -50,7 +50,11 @@ end
 class FynylState
     @@NUMBER = /_?\d+/
     @@STRING = /"(?:[^"]|"")*"/
-    @@META = ["@", "#", "&", ".&", "q", "Q"]
+    @@META = ["q", "Q", "z"]
+    @@UPDATE_TYPES = {
+        "&" => :set_var,
+        ".&" => :set_func,
+    }
     def FynylState.tokenize(code)
         line, col = 1, 1
         code.scan(/#@@NUMBER|#@@STRING|\s+|[`'].|[.:]*\S/).map.with_index { |raw, start|
@@ -91,10 +95,18 @@ class FynylState
         }
     end
 
-    def initialize(code)
+    def FynylState.block(code)
+        FynylState.new code, populate: false
+    end
+
+    def initialize(code, populate: true)
         @stack = []
         @stack_stack = []
-        @variables = { "A" => ("A".."Z").to_a.join, "h" => "", "H" => " " }
+        if populate
+            @variables = { "A" => ("A".."Z").to_a.join, "h" => "", "H" => " " }
+        else
+            @variables = {}
+        end
         @functions = {}
         if Array === code
             @tokens = code
@@ -102,9 +114,69 @@ class FynylState
             @tokens = FynylState.tokenize(code)
         end
         @pos = 0
-        @building_block_depth = nil
+        process_blocks
     end
     attr_accessor :stack, :stack_stack, :tokens, :variables, :functions
+
+    def process_blocks
+        result = []
+        block_stack = []
+        depth = nil
+        read_count = nil
+        build_read = []
+        read_source = nil
+        @tokens.each { |token|
+            if depth != nil
+                depth -= 1 if token.type == :block_close
+                depth += 1 if token.type == :block_open
+
+                if depth.zero?
+                    result << FynylState.block(block_stack.pop)
+                    depth = nil
+                else
+                    block_stack.last << token
+                end
+
+            elsif read_count != nil
+                read_count -= 1
+                build_read << token
+                if read_count.zero?
+                    read_count = nil
+                    case read_source.raw
+                        when "@", "#"
+                            result << FynylState.block(build_read)
+                        when "&", ".&"
+                            result << FynylToken.new(
+                                build_read.map(&:raw).join,
+                                @@UPDATE_TYPES[read_source.raw],
+                                read_source.start,
+                                read_source.line,
+                                read_source.col
+                            )
+                        else
+                            raise "unhandled read_count source: #{read_source.inspect}"
+                    end
+                    build_read = []
+                end
+
+            elsif token.type == :block_open
+                depth = 1
+                block_stack << []
+
+            elsif ["@", "&", ".&"].include? token.raw
+                read_count = 1
+                read_source = token
+
+            elsif token.raw == "#"
+                read_count = 2
+                read_source = token
+
+            else
+                result << token
+            end
+        }
+        @tokens = result
+    end
 
     def cur
         @tokens[@pos]
@@ -112,6 +184,111 @@ class FynylState
 
     def advance
         @pos += 1
+    end
+
+    def running?
+        @pos < @tokens.size
+    end
+
+    def call_subinst(inst)
+        if String === inst
+            inst = FynylState.new(inst)
+        end
+        inst.stack = @stack
+        inst.variables = @variables
+        inst.functions = @functions
+        inst.run
+    end
+
+    def call_inst(inst, *args)
+        if String === inst
+            inst = FynylState.new(inst)
+        end
+        inst.stack = args
+        inst.variables = @variables.dup
+        inst.functions = @functions.dup
+        inst.run
+        inst.stack
+    end
+
+    def get_func(source)
+        if FynylState === source
+            source
+        elsif FynylToken === source
+            call_inst("{#{source.raw}}").last
+        else
+            raise "malformed source: #{source.inspect}"
+        end
+    end
+
+    def step
+        if FynylState === cur
+            @stack << cur
+
+        elsif @variables.has_key? cur.raw
+            @stack << @variables[cur.raw]
+
+        elsif @functions.has_key? cur.raw
+            call_subinst @functions[cur.raw]
+
+        else
+            case cur.type
+                when :whitespace
+                    # pass
+                when :array_start
+                    @stack_stack << @stack.clone
+                    @stack.clear
+                when :array_end
+                    temp = @stack_stack.pop
+                    temp.push @stack.dup
+                    @stack.clear
+                    @stack.concat temp
+                when :ord
+                    @stack << cur.raw[1].ord
+                when :char
+                    @stack << cur.raw[1]
+                when :number
+                    @stack << cur.raw.tr('_', '-').to_i
+                when :string
+                    @stack << cur.raw[1..-2].gsub('""', '"')
+                when :set_var
+                    @variables[cur.raw] = @stack.pop
+                when :set_func
+                    @functions[cur.raw] = @stack.pop
+                when :meta
+                    meta_symbols = []
+                    while FynylToken === cur && cur.type == :meta
+                        meta_symbols << cur.raw
+                        advance
+                    end
+
+                    function = get_func cur
+                    meta_symbols.each_with_index.reverse_each { |meta_symbol, i|
+                        if i > 0
+                            raise "no support for nested meta symbols presently"
+                        end
+                        case meta_symbol
+                            when "q"
+                                call_subinst "{#{cur.raw}}v"
+                            when "Q"
+                                call_subinst "{#{cur.raw}}V"
+                            when "z"
+                                f = function
+                                function = lambda { |a, b|
+                                    a.zip(b).map { |e| call_inst(f, *e).last }
+                                }
+                            else
+                                STDERR.puts "unhandled meta #{meta_symbol.inspect}"
+                        end
+                    }
+                when :operator
+                    call_op cur.raw
+                else
+                    STDERR.puts "unknown type #{cur.type} for #{cur}"
+            end
+        end
+
+        advance
     end
 
     def call_op(op = cur.raw)
@@ -486,10 +663,6 @@ class FynylState
             when "y"
                 @stack.push @stack[-2]
 
-            when "z"
-                a, b, f = @stack.pop(3)
-                @stack << a.zip(b).map { |e| call_inst(f, *e).last }
-
             when "~"
                 @stack.pop(2).reverse_each { |e| @stack << e }
 
@@ -498,100 +671,6 @@ class FynylState
         end
     end
 
-    def running?
-        @pos < @tokens.size
-    end
-
-    def call_subinst(inst)
-        if String === inst
-            inst = FynylState.new(inst)
-        end
-        inst.stack = @stack
-        inst.variables = @variables
-        inst.functions = @functions
-        inst.run
-    end
-
-    def call_inst(inst, *args)
-        inst.stack = args
-        inst.variables = @variables.dup
-        inst.functions = @functions.dup
-        inst.run
-        inst.stack
-    end
-
-    def step
-        if @building_block_depth != nil
-            @building_block_depth -= 1 if cur.type == :block_close
-            @building_block_depth += 1 if cur.type == :block_open
-
-            if @building_block_depth.zero?
-                @stack << FynylState.new(@stack_stack.pop)
-                @building_block_depth = nil
-            else
-                @stack_stack.last << cur
-            end
-
-        elsif @variables.has_key? cur.raw
-            @stack << @variables[cur.raw]
-
-        elsif @functions.has_key? cur.raw
-            call_subinst @functions[cur.raw]
-
-        else
-            case cur.type
-                when :whitespace
-                    # pass
-                when :array_start
-                    @stack_stack << @stack.clone
-                    @stack.clear
-                when :array_end
-                    temp = @stack_stack.pop
-                    temp.push @stack.dup
-                    @stack.clear
-                    @stack.concat temp
-                when :ord
-                    @stack << cur.raw[1].ord
-                when :char
-                    @stack << cur.raw[1]
-                when :number
-                    @stack << cur.raw.tr('_', '-').to_i
-                when :string
-                    @stack << cur.raw[1..-2].gsub('""', '"')
-                when :meta
-                    meta_symbol = cur.raw
-                    advance
-                    case meta_symbol
-                        when "@"
-                            @stack << FynylState.new([cur])
-                        when "&"
-                            @variables[cur.raw] = @stack.pop
-                        when ".&"
-                            @functions[cur.raw] = @stack.pop
-                        when "#"
-                            a = [cur]
-                            advance
-                            a << cur
-                            @stack << FynylState.new(a)
-                        when "q"
-                            call_subinst "{#{cur.raw}}v"
-                        when "Q"
-                            call_subinst "{#{cur.raw}}V"
-                        else
-                            STDERR.puts "unhandled meta #{meta_symbol.inspect}"
-                    end
-                when :operator
-                    call_op cur.raw
-                when :block_open
-                    @building_block_depth = 1
-                    @stack_stack << []
-                else
-                    STDERR.puts "unknown type #{cur.type} for #{cur}"
-            end
-        end
-
-        advance
-    end
 
     def run
         @pos = 0
@@ -601,6 +680,8 @@ class FynylState
     def body
         tokens.map(&:raw).join
     end
+
+    alias :raw :body
 
     def to_s
         FynylState.format self
