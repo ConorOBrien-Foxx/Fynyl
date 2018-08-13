@@ -197,11 +197,16 @@ class FynylState
 
             when "?"
                 e = @stack.pop
-                stack << case e
+                case e
                     when Array, String
-                        e.to_a.sample
+                        @stack << e.to_a.sample
+                    when FynylState
+                        a = @stack.pop
+                        if FynylState.truthy? a
+                            call_subinst e
+                        end
                     else
-                        rand e
+                        @stack << rand(e)
                 end
 
             when ".?"
@@ -336,7 +341,7 @@ class FynylState
                     a, j = @stack.pop(2)
                     @stack << a.join(j)
                 end
-                
+
             when "L"
                 f = @stack.pop
                 loop {
@@ -388,6 +393,12 @@ class FynylState
                 @stack << STDIN.gets
             when ":R"
                 call_subinst STDIN.gets
+            when "::R"
+                f = @stack.pop
+                STDIN.each_line { |line|
+                    call_subinst line
+                    call_subinst f unless f.nil?
+                }
 
             when "s"
                 a = @stack.pop

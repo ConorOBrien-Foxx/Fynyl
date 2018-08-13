@@ -71,6 +71,7 @@ $               operator    discards the top of the stack
                             [number a] pushes a random integer in [0, a)
                             [array a] pushes a random element in a
                             [string s] pushes a random character in s
+                            [any a, block b] executes b if a is truthy
 .?              operator    [array a] pushes a shuffled
 @               meta        pushes a block consisting of the next character
 C               operator    clears the stack
@@ -95,6 +96,7 @@ R               operator    [number a, number b] pushes the inclusive range betw
 .R              operator    pushes a line of STDIN without a trailing newline
 :R              operator    evaluates a line of STDIN in the current scope
 ..R             operator    pushes a raw line of STDIN
+::R             operator    [block b] applies b to each line of STDIN (evaluated)
 S               operator    [array a] pushes the sum of a
 .:S             operator    debugs the stack
 T               operator    [array a] pushes a transposed
