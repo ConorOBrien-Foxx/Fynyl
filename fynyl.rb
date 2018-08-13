@@ -2,6 +2,8 @@
 require 'cmath'
 require 'readline'
 
+Infinity = Float::INFINITY
+
 def to_base(base, n)
     return [0] if n.zero?
     arr = []
@@ -114,9 +116,17 @@ class FynylState
 
     def call_op(op = cur.raw)
         case op
-            when /^[-+%]$/
+            when "+"
                 a, b = @stack.pop(2)
-                @stack.push a.send op, b
+                @stack.push a + b
+
+            when "-"
+                a, b = @stack.pop(2)
+                @stack.push a - b
+
+            when "%"
+                a, b = @stack.pop(2)
+                @stack.push a % b
 
             when "_"
                 a = @stack.pop
@@ -135,6 +145,9 @@ class FynylState
                 else
                     raise 'idk'
                 end
+
+            when "._"
+                @stack.reverse!
 
             when "|"
                 @stack.push @stack.pop.abs
@@ -162,6 +175,9 @@ class FynylState
             when "="
                 a, b = @stack.pop(2)
                 @stack.push a == b
+            when ":="
+                a, b = @stack.pop(2)
+                @stack.push a != b
             when "<"
                 a, b = @stack.pop(2)
                 @stack.push a < b
@@ -212,15 +228,28 @@ class FynylState
 
             when ","
                 @stack << @stack.pop(2)
+            when ".,"
+                @stack << @stack.pop(@stack.pop)
 
             when "$"
                 @stack.pop
             when ".$"
                 @stack.pop @stack.pop
+            when ":$"
+                size = @stack.pop
+                @stack.pop until @stack.size <= size
 
             when "!"
-                call_subinst @stack.pop
-
+                a = @stack.pop
+                case a
+                    when Numeric
+                        @stack << a
+                        call_subinst "1~R@*f"
+                    when TrueClass, FalseClass
+                        @stack << !a
+                    else
+                        call_subinst a
+                end
             when "b"
                 @stack.push FynylState.truthy? @stack.pop
 
@@ -256,7 +285,12 @@ class FynylState
                 call_subinst FynylState.new(@stack.pop)
 
             when "F"
-                @stack.push FynylState.new(@stack.pop)
+                a = @stack.pop
+                if FynylState === a
+                    @stack.push a
+                else
+                    @stack.push FynylState.new(a)
+                end
 
             when "f"
                 a, f = @stack.pop(2)
@@ -275,8 +309,25 @@ class FynylState
 
                 @stack << a.inject { |a, c| call_inst(f, a, c).last }
 
+            when "g"
+                @stack.push @stack.pop.to_f
+            when "G"
+                @stack.push @stack.pop.to_r
+
             when "i"
                 @stack.push @stack.pop * 1i
+
+            when "I"
+                @stack.push @stack.pop.to_i
+
+            when ".I"
+                el = @stack.pop
+                @stack.clear
+                @stack << el
+            when ":I"
+                els = @stack.pop(@stack.pop)
+                @stack.clear
+                @stack.concat els
 
             when "j"
                 a, j = @stack.pop(2)
@@ -301,6 +352,8 @@ class FynylState
                 a.each { |e|
                     call_inst(f, e).last
                 }
+            when "M"
+                @stack.concat @stack.pop
 
             when "o"
                 puts @stack.pop
@@ -333,7 +386,15 @@ class FynylState
                 call_subinst STDIN.gets
 
             when "s"
-                @stack << @stack.pop.size
+                a = @stack.pop
+                @stack << case a
+                    when Numeric
+                        a.abs.to_s.size
+                    when FynylState
+                        Infinity
+                    else
+                        a.size
+                end
             when ";"
                 @stack << @stack.pop.to_s
 
@@ -388,8 +449,9 @@ class FynylState
             when "W"
                 c, f = @stack.pop(2)
                 loop {
-                    call_subinst c
-                    unless FynylState.truthy? @stack.last
+                    temp = @stack.dup
+                    s = call_inst c, *temp
+                    unless FynylState.truthy? s.last
                         break
                     end
                     call_subinst f
