@@ -330,9 +330,13 @@ class FynylState
                 @stack.concat els
 
             when "j"
-                a, j = @stack.pop(2)
-                @stack << a.join(j)
-
+                if Array === @stack.last
+                    @stack << @stack.pop.join
+                else
+                    a, j = @stack.pop(2)
+                    @stack << a.join(j)
+                end
+                
             when "L"
                 f = @stack.pop
                 loop {
@@ -465,8 +469,8 @@ class FynylState
                 @stack << to_base(b, n)
 
             when "X"
-                n, b = @stack.pop(2)
-                @stack << from_base(b, n)
+                a, b = @stack.pop(2)
+                @stack << from_base(b, a)
 
             when "y"
                 @stack.push @stack[-2]
@@ -559,9 +563,9 @@ class FynylState
                             a << cur
                             @stack << FynylState.new(a)
                         when "q"
-                            call_subinst "@#{cur.raw}v"
+                            call_subinst "{#{cur.raw}}v"
                         when "Q"
-                            call_subinst "@#{cur.raw}V"
+                            call_subinst "{#{cur.raw}}V"
                         else
                             STDERR.puts "unhandled meta #{meta_symbol.inspect}"
                     end
