@@ -51,7 +51,8 @@ def iofn(arity=nil, &bl)
     arity ||= bl.arity
     lambda { |inst|
         args = inst.stack.pop(arity)
-        inst.stack << bl[*args]
+        res = bl[*args]
+        inst.stack << res unless res == :none
     }
 end
 
@@ -256,8 +257,9 @@ class FynylState
                     a.each { |e|
                         call_inst(function, e).last
                     }
+                    :none
                 }
-            
+
             when "t"
                 iofn { |as, bs|
                     as.map { |a|
@@ -552,7 +554,7 @@ class FynylState
                 @stack.push @stack.pop.to_f
             when "G"
                 @stack.push @stack.pop.to_r
-            
+
 
             when "i"
                 @stack.push @stack.pop * 1i
@@ -644,14 +646,14 @@ class FynylState
 
             when "T"
                 @stack.push @stack.pop.transpose
-            
+
             when "u"
                 a, b = @stack.pop(2)
                 @stack << b
-                call_meta("V") { |b| 
+                call_meta("V") { |b|
                     a[b]
                 } [self]
-            
+
             when "w"
                 f = @stack.pop
                 while FynylState.truthy? @stack.last
@@ -681,8 +683,8 @@ class FynylState
 
             when "y"
                 @stack.push @stack[-2]
-            
-            
+
+
             # "z" - zip
             when "Z"
                 a = @stack.pop
@@ -692,7 +694,7 @@ class FynylState
                     else
                         @stack.push (0...a.size).to_a
                 end
-                
+
             when "~"
                 @stack.pop(2).reverse_each { |e| @stack << e }
 
