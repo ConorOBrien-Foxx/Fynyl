@@ -58,7 +58,7 @@ end
 class FynylState
     @@NUMBER = /_?\d+/
     @@STRING = /"(?:[^"]|"")*"/
-    @@META = ["z", "m", ".m", "v", "V", "q"]
+    @@META = ["z", "m", ".m", "v", "V"]
     @@UPDATE_TYPES = {
         "&" => :set_var,
         ".&" => :set_func,
@@ -678,9 +678,17 @@ class FynylState
             when "y"
                 @stack.push @stack[-2]
             
+            
+            # "z" - zip
             when "Z"
-                @stack.push (0...@stack.pop).to_a
-
+                a = @stack.pop
+                case a
+                    when Numeric
+                        @stack.push (0...a).to_a
+                    else
+                        @stack.push (0...a.size).to_a
+                end
+                
             when "~"
                 @stack.pop(2).reverse_each { |e| @stack << e }
 
