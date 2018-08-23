@@ -168,7 +168,7 @@ s               operator    [string s] pushes the number of characters in s
                             [array a] pushes the number of elements in a
                             [number n] pushes the number of digits in n
 t               operator    [array x, array y, block b] tabulates b over x and y
-                            e.g.: (1 2 3) (4 5 6) {*} t yields ((4 5 6) (8 10 12) (12 15 18))
+                            e.g.: (1 2 3) (4 5 6) t{*} yields ((4 5 6) (8 10 12) (12 15 18))
 u               unassigned
 v               meta        [array x, array y, block b] vectorizes b over x and y
                             e.g.: (1 2 3) 3 v+ yields (4 5 6)
@@ -182,5 +182,5 @@ z               meta        [array x, array y, block b] zips b across x and y
 |               operator    [number n] pushes the absolute value of n
 }               syntax      marks the beginning of a block
 ~               operator    swaps the top two elements on the stack
-
+                            [when used in as a meta argument] uses the TOS as the function
 ```

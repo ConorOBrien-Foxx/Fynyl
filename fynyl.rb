@@ -58,7 +58,7 @@ end
 class FynylState
     @@NUMBER = /_?\d+/
     @@STRING = /"(?:[^"]|"")*"/
-    @@META = ["z", "m", ".m", "v", "V"]
+    @@META = ["z", "m", ".m", "v", "V", "t"]
     @@UPDATE_TYPES = {
         "&" => :set_var,
         ".&" => :set_func,
@@ -235,6 +235,9 @@ class FynylState
 
     def call_meta(meta_symbol, fn=nil, &block)
         function = block || fn
+        if function.raw == "~"
+            function = @stack.pop
+        end
         case meta_symbol
             when "z"
                 iofn { |a, b|
@@ -252,6 +255,15 @@ class FynylState
                 iofn { |a|
                     a.each { |e|
                         call_inst(function, e).last
+                    }
+                }
+            
+            when "t"
+                iofn { |as, bs|
+                    as.map { |a|
+                        bs.map { |b|
+                            call_inst(function, a, b).last
+                        }
                     }
                 }
 
@@ -629,14 +641,6 @@ class FynylState
 
             when ".:S"
                 print_stack
-
-            when "t"
-                as, bs, f = @stack.pop(3)
-                @stack << as.map { |a|
-                    bs.map { |b|
-                        call_inst(f, a, b).last
-                    }
-                }
 
             when "T"
                 @stack.push @stack.pop.transpose
