@@ -209,14 +209,18 @@ class FynylState
     end
 
     def call_inst(inst, *args)
-        if String === inst
-            inst = FynylState.new(inst)
+        if Proc === inst
+            [inst[*args]]
+        else
+            if String === inst
+                inst = FynylState.new(inst)
+            end
+            inst.stack = args
+            inst.variables = @variables.dup
+            inst.functions = @functions.dup
+            inst.run
+            inst.stack
         end
-        inst.stack = args
-        inst.variables = @variables.dup
-        inst.functions = @functions.dup
-        inst.run
-        inst.stack
     end
 
     def get_func(source)
@@ -229,7 +233,8 @@ class FynylState
         end
     end
 
-    def call_meta(meta_symbol, function)
+    def call_meta(meta_symbol, fn=nil, &block)
+        function = block || fn
         case meta_symbol
             when "z"
                 iofn { |a, b|
@@ -450,6 +455,8 @@ class FynylState
                 @stack << @stack.pop(2)
             when ".,"
                 @stack << @stack.pop(@stack.pop)
+            when ";"
+                @stack << @stack.pop.to_s
 
             when "$"
                 @stack.pop
@@ -533,6 +540,7 @@ class FynylState
                 @stack.push @stack.pop.to_f
             when "G"
                 @stack.push @stack.pop.to_r
+            
 
             when "i"
                 @stack.push @stack.pop * 1i
@@ -615,11 +623,12 @@ class FynylState
                     else
                         a.size
                 end
-            when ";"
-                @stack << @stack.pop.to_s
 
             when "S"
                 call_subinst "@+f"
+
+            when ".:S"
+                print_stack
 
             when "t"
                 as, bs, f = @stack.pop(3)
@@ -629,12 +638,16 @@ class FynylState
                     }
                 }
 
-            when ".:S"
-                print_stack
-
             when "T"
                 @stack.push @stack.pop.transpose
-
+            
+            when "u"
+                a, b = @stack.pop(2)
+                @stack << b
+                call_meta("V") { |b| 
+                    a[b]
+                } [self]
+            
             when "w"
                 f = @stack.pop
                 while FynylState.truthy? @stack.last
@@ -664,6 +677,9 @@ class FynylState
 
             when "y"
                 @stack.push @stack[-2]
+            
+            when "Z"
+                @stack.push (0...@stack.pop).to_a
 
             when "~"
                 @stack.pop(2).reverse_each { |e| @stack << e }
