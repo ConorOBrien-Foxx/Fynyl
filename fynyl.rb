@@ -59,7 +59,7 @@ end
 class FynylState
     @@NUMBER = /_?\d+/
     @@STRING = /"(?:[^"]|"")*"/
-    @@META = ["z", "m", ".m", "v", "V", "t"]
+    @@META = ["z", "m", ".m", "v", "V", "t", "f"]
     @@UPDATE_TYPES = {
         "&" => :set_var,
         ".&" => :set_func,
@@ -243,6 +243,24 @@ class FynylState
             when "z"
                 iofn { |a, b|
                     a.zip(b).map { |e| call_inst(function, *e).last }
+                }
+
+            when "f"
+                iofn { |a|
+                    # deduce seed, if applicable
+                    signature = function.body.strip
+                    seed = case signature
+                        when "+"
+                            0
+                        when "*"
+                            1
+                        else
+                            nil
+                    end
+
+                    a = [seed, *a] unless seed.nil?
+
+                    a.inject { |a, c| call_inst(function, a, c).last }
                 }
 
             when "m"
@@ -485,7 +503,7 @@ class FynylState
                 case a
                     when Numeric
                         @stack << a
-                        call_subinst "1~R@*f"
+                        call_subinst "rf*"
                     when TrueClass, FalseClass
                         @stack << !a
                     else
@@ -532,23 +550,6 @@ class FynylState
                 else
                     @stack.push FynylState.new(a)
                 end
-
-            when "f"
-                a, f = @stack.pop(2)
-                # deduce seed, if applicable
-                signature = f.body.strip
-                seed = case signature
-                    when "+"
-                        0
-                    when "*"
-                        1
-                    else
-                        nil
-                end
-
-                a = [seed, *a] unless seed.nil?
-
-                @stack << a.inject { |a, c| call_inst(f, a, c).last }
 
             when "g"
                 @stack.push @stack.pop.to_f

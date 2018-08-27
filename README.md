@@ -137,7 +137,7 @@ c               operator    [number a] pushes the character whose code point is 
 :c              operator    [number a] pushes arccos(a)
 d               operator    duplicates the top element on the stack
 e               operator    [string s] evaluates s
-f               operator    [array a, block b] folds b over a
+f               meta        [array a] folds fn over a
                             (empty array works correctly with {+} and {*})
 g               operator    [any a] converts a to a floating point number
 h               unassigned
